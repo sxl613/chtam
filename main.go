@@ -17,9 +17,10 @@ func main() {
 	outputFile := flag.String("output", "", "Output PDF file")
 	startPage := flag.Int("start-page", 1, "Page number to start pagination with")
 	fromPage := flag.Int("from-page", 1, "Page of the PDF to start stamping from")
-	color := flag.String("color", "0.5 0.5 0.5", "Color for the page numbers (e.g., '1 0 0' for red)")
+	color := flag.String("color", "0 0 0", "Color for the page numbers (e.g., '1 0 0' for red)")
 	size := flag.Int("size", 12, "Font size for the page numbers")
 	position := flag.String("position", "bc", "Position of the page numbers (e.g., 'tl', 'tc', 'tr', 'l', 'c', 'r', 'bl', 'bc', 'br')")
+	verbose := flag.Bool("verbose", false, "Whether to log stuff")
 
 	flag.Parse()
 
@@ -51,7 +52,9 @@ func main() {
 		log.Fatalf("Error stamping PDF: %v", err)
 	}
 
-	fmt.Printf("Successfully stamped %d pages in %s and saved to %s\n", pageCount-*fromPage+1, *inputFile, *outputFile)
+	if *verbose {
+		fmt.Printf("Successfully stamped %d pages in %s and saved to %s\n", pageCount-*fromPage+1, *inputFile, *outputFile)
+	}
 }
 
 func createWatermark(text, position string, size int, color string) (*model.Watermark, error) {
