@@ -3,13 +3,14 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
 	"strconv"
 
 	"github.com/pdfcpu/pdfcpu/pkg/api"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/types"
 )
+
+// import "C"
 
 func main() {
 	// Define command-line flags
@@ -24,14 +25,25 @@ func main() {
 
 	flag.Parse()
 
+	pageCount, err := paginate(inputFile, outputFile, startPage, fromPage, position, size, color)
+	if err != nil {
+		return
+	}
+	if *verbose {
+		fmt.Printf("Successfully stamped %d pages in %s and saved to %s\n", pageCount-*fromPage+1, *inputFile, *outputFile)
+	}
+}
+
+func paginate(inputFile *string, outputFile *string, startPage *int, fromPage *int, position *string, size *int, color *string) (int, error) {
+
 	if *inputFile == "" || *outputFile == "" {
-		log.Fatal("Input and output files must be specified")
+		return 0, fmt.Errorf("input and output files must be specified")
 	}
 
 	// Get the total number of pages in the PDF
 	pageCount, err := api.PageCountFile(*inputFile)
 	if err != nil {
-		log.Fatalf("Error getting page count: %v", err)
+		return 0, fmt.Errorf("error getting page count: %w", err)
 	}
 
 	// Create a map of watermarks, one for each page to be stamped
@@ -41,7 +53,7 @@ func main() {
 		pageNum := *startPage + (i - *fromPage)
 		wm, err := createWatermark(strconv.Itoa(pageNum), *position, *size, *color)
 		if err != nil {
-			log.Fatalf("Error creating watermark: %v", err)
+			return 0, fmt.Errorf("error creating watermark: %w", err)
 		}
 		watermarks[i] = wm
 	}
@@ -49,15 +61,12 @@ func main() {
 	// Add watermarks to the PDF
 	err = api.AddWatermarksMapFile(*inputFile, *outputFile, watermarks, nil)
 	if err != nil {
-		log.Fatalf("Error stamping PDF: %v", err)
+		return 0, fmt.Errorf("error stamping PDF: %w", err)
 	}
-
-	if *verbose {
-		fmt.Printf("Successfully stamped %d pages in %s and saved to %s\n", pageCount-*fromPage+1, *inputFile, *outputFile)
-	}
+	return pageCount, nil
 }
 
-func createWatermark(text, position string, size int, color string) (*model.Watermark, error) {
+func createWatermark(text string, position string, size int, color string) (*model.Watermark, error) {
 	// Description format: "text:..., pos:..., sc:..., rot:..., op:..., color:..."
 	desc := fmt.Sprintf(`pos:%s, scale:1.0 abs, rot:0, offset:-2 -2, color:%s, font:Helvetica, points:%d`, position, color, size)
 	return api.TextWatermark(text, desc, true, false, types.POINTS)
