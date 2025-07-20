@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"strconv"
 
 	"github.com/pdfcpu/pdfcpu/pkg/api"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
@@ -14,6 +15,7 @@ func main() {
 	// Define command-line flags
 	inputFile := flag.String("input", "", "Input PDF file")
 	outputFile := flag.String("output", "", "Output PDF file")
+	startPage := flag.Int("start-page", 1, "Page number to start pagination with")
 	fromPage := flag.Int("from-page", 1, "Page of the PDF to start stamping from")
 	color := flag.String("color", "0 0 0", "Color for the page numbers (e.g., '1 0 0' for red)")
 	size := flag.Int("size", 12, "Font size for the page numbers")
@@ -22,52 +24,41 @@ func main() {
 
 	flag.Parse()
 
-	err := paginate(inputFile, outputFile, fromPage, position, size, color, verbose)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-}
-
-// paginate
-func paginate(inputFile *string, outputFile *string, fromPage *int, position *string, size *int, color *string, verbose *bool) error {
-
 	if *inputFile == "" || *outputFile == "" {
-		fmt.Printf("%s %s\n", *inputFile, *outputFile)
-		return fmt.Errorf("Input and output files must be specified")
+		log.Fatal("Input and output files must be specified")
 	}
 
-	// Create a single watermark object to be used as a stamp.
-	// We use the "%p" placeholder, which pdfcpu replaces with the page number during processing.
-	// This is the key to mimicking the `stamp` command's behavior.
-	stamp, err := createStamp("%p", *position, *size, *color)
+	// Get the total number of pages in the PDF
+	pageCount, err := api.PageCountFile(*inputFile)
 	if err != nil {
-		return fmt.Errorf("Error creating stamp: %v", err)
+		log.Fatalf("Error getting page count: %v", err)
 	}
 
-	// Use AddWatermarksFile to apply the single stamp object to all selected pages.
-	// This function correctly handles shared page resources when used with a placeholder,
-	// preventing the "jumbled" text issue.
-	if *fromPage > 1 {
-		err = api.AddWatermarksFile(*inputFile, *outputFile, []string{fmt.Sprintf("%d-", *fromPage)}, stamp, nil)
-	} else {
+	// Create a map of watermarks, one for each page to be stamped
+	watermarks := make(map[int]*model.Watermark)
 
-		err = api.AddWatermarksFile(*inputFile, *outputFile, nil, stamp, nil)
+	for i := *fromPage; i <= pageCount; i++ {
+		pageNum := *startPage + (i - *fromPage)
+		wm, err := createWatermark(strconv.Itoa(pageNum), *position, *size, *color)
+		if err != nil {
+			log.Fatalf("Error creating watermark: %v", err)
+		}
+		watermarks[i] = wm
 	}
+
+	// Add watermarks to the PDF
+	err = api.AddWatermarksMapFile(*inputFile, *outputFile, watermarks, nil)
 	if err != nil {
-		return fmt.Errorf("Error stamping PDF: %v", err)
+		log.Fatalf("Error stamping PDF: %v", err)
 	}
 
 	if *verbose {
-		fmt.Printf("Successfully stamped pages in %s and saved to %s\n", *inputFile, *outputFile)
+		fmt.Printf("Successfully stamped %d pages in %s and saved to %s\n", pageCount-*fromPage+1, *inputFile, *outputFile)
 	}
-	return nil
 }
 
-// createStamp creates a watermark object using the documented api.TextWatermark function.
-func createStamp(text, position string, size int, color string) (*model.Watermark, error) {
-	// The description string configures the appearance of the stamp.
-	// `onTop` is true to ensure it's a stamp (overlay) rather than a watermark (underlay).
-	desc := fmt.Sprintf(`pos:%s, scale:1.0 abs, rot:0, offset: -2 -2, color:%s, font:Helvetica, points:%d`, position, color, size)
+func createWatermark(text, position string, size int, color string) (*model.Watermark, error) {
+	// Description format: "text:..., pos:..., sc:..., rot:..., op:..., color:..."
+	desc := fmt.Sprintf(`pos:%s, scale:1.0 abs, rot:0, offset:-2 -2, color:%s, font:Helvetica, points:%d`, position, color, size)
 	return api.TextWatermark(text, desc, true, false, types.POINTS)
 }
